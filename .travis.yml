@@ -1,0 +1,12 @@
+sudo: required
+addons:
+  chrome: stable
+  
+language: java
+
+install:
+ - mvn clean
+ 
+script:
+ - mvn package
+ 
