@@ -314,14 +314,6 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 });
 lc.core.createClass("lc.dynamicui.Expression",
 	function(expression, element, thisObj, additions) {
-		// TODO make this as syntaxic sugar that can be registered
-		var i;
-		while ((i = expression.indexOf("$(")) >= 0) {
-			var j = expression.indexOf(')', i + 2);
-			if (j < 0) break;
-			expression = expression.substring(0, i) + "lc.Context.get(document.getElementById(\"" + expression.substring(i + 2, j) + "\"), true)" + expression.substring(j + 1);
-		}
-
 		this.expression = expression;
 		this.element = element;
 		this.thisObj = thisObj;
