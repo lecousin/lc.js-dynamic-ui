@@ -2,22 +2,36 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 	
 	lc.core.extendClass("lc.dynamicui.elements.ForEach", lc.dynamicui.elements.DynamicElement,
 		function(element) {
-			this.arrayExpression = element.getAttribute("array");
-			this.varName = element.getAttribute("var");
-			this.content = element.innerHTML;
+			if (element.nodeName == "LC-DYN-FOREACH") {
+				this.arrayExpression = element.getAttribute("array");
+				this.varName = element.getAttribute("var");
+				this.content = element.innerHTML;
+			} else if (element.getAttribute("lc-dyn-foreach")) {
+				var s = element.getAttribute("lc-dyn-foreach");
+				var i = s.indexOf(' in ');
+				if (i < 0) throw "Invalid foreach expression: " + s;
+				this.varName = s.substring(0, i).trim();
+				this.arrayExpression = s.substring(i + 4).trim();
+				this.content = element;
+				element.removeAttribute("lc-dyn-foreach");
+			} else
+				throw new Error("Unable to determine how to process foreach element");
+			
 			this.startComment = document.createComment("for each " + this.varName + " in " + this.arrayExpression);
 			this.endComment = document.createComment("end for each " + this.varName + " in " + this.arrayExpression);
 			element.parentNode.insertBefore(this.startComment, element);
 			element.parentNode.insertBefore(this.endComment, element);
 			lc.html.remove(element);
+			
 			lc.dynamicui.elements.DynamicElement.call(this, this.startComment);
 			this.arrayValue = undefined;
 			this.arrayElements = [];
+			this.arrayExpression = new lc.dynamicui.Expression(this.arrayExpression, this.element);
 			lc.dynamicui.registerElement(this, [this.arrayExpression]);
 		}, {
 			
 			evaluate: function() {
-				var arr = lc.dynamicui.evaluate(this.arrayExpression, this.element);
+				var arr = this.arrayExpression.evaluate();
 				if (lc.dynamicui.equals(arr, this.arrayValue)) return;
 				var newElements = [];
 				if (arr && arr.length > 0) {
@@ -37,27 +51,43 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 					}
 				}
 				for (var i = 0; i < this.arrayElements.length; ++i)
-					lc.html.remove(this.arrayElements[i].element);
+					for (var j = 0; j < this.arrayElements[i].elements.length; ++j)
+						lc.html.remove(this.arrayElements[i].elements[j]);
 				this.arrayElements = newElements;
 				this.arrayValue = arr;
 				for (var i = 0; i < this.arrayElements.length; ++i) {
-					var alreadyThere = this.arrayElements[i].element.parentNode;
-					this.startComment.parentNode.insertBefore(this.arrayElements[i].element, this.endComment);
-					if (!alreadyThere)
-						lc.html.processor.process(this.arrayElements[i].element);
+					for (var j = 0; j < this.arrayElements[i].elements.length; ++j) {
+						var element = this.arrayElements[i].elements[j];
+						var alreadyThere = element.parentNode;
+						this.startComment.parentNode.insertBefore(element, this.endComment);
+						if (!alreadyThere)
+							lc.html.processor.process(element);
+					}
 				}
 			},
 			
 			createElement: function(value, index) {
-				var e = document.createElement("DIV");
+				if (typeof this.content === 'string') {
+					var e = document.createElement("DIV");
+					e.innerHTML = this.content;
+					var result = {
+						elements: [],
+						value: value
+					};
+					while (e.childNodes.length > 0) {
+						var elem = e.removeChild(e.childNodes[0]);
+						var ctx = lc.Context.get(elem);
+						ctx.addProperty(this.varName, value);
+						ctx.addProperty(this.varName + "Index", index);
+						result.elements.push(elem);
+					}
+					return result;
+				}
+				var e = this.content.cloneNode(true);
 				var ctx = lc.Context.get(e);
 				ctx.addProperty(this.varName, value);
 				ctx.addProperty(this.varName + "Index", index);
-				e.innerHTML = this.content;
-				return {
-					element: e,
-					value: value
-				};
+				return { elements: [e], value: value };
 			}
 			
 		}

@@ -3,9 +3,10 @@ lc.core.createClass("lc.dynamicui.DynamicProperty",
 		this.object = object;
 		this.propertyName = propertyName;
 		var callback = new lc.async.Callback(this, this.update);
-		lc.dynamicui.watch(propertyValue, element, callback);
+		var expr = new lc.dynamicui.Expression(propertyValue, element);
+		lc.dynamicui.watch(expr, callback);
 		lc.events.listen(element, 'destroy', new lc.async.Callback(this, function() {
-			lc.dynamicui.unwatch(propertyValue, element, callback);
+			lc.dynamicui.unwatch(expr, callback);
 		}));
 	}, {
 		update: function(value, previous) {

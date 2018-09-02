@@ -1,7 +1,8 @@
 lc.core.createClass("lc.dynamicui.DynamicEvent",
 	function(object, eventName, eventCode, element) {
 		var eventFunction = function(event) {
-			lc.dynamicui.evaluate("{" + eventCode + "}", element, object, { event: event });
+			var expression = new lc.dynamicui.Expression("{" + eventCode + "}", element, object, { event: event });
+			expression.evaluate();
 			lc.dynamicui.needCycle();
 		};
 	

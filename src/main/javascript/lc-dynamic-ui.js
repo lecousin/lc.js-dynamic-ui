@@ -8,28 +8,67 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			};
 			dynElement._watch_expressions = expressions;
 			for (var i = 0; i < expressions.length; ++i)
-				lc.dynamicui.watch(expressions[i], dynElement.element, dynElement._watch_callback);
+				lc.dynamicui.watch(expressions[i], dynElement._watch_callback);
 		},
 		
 		unregisterElement: function(dynElement) {
 			for (var i = 0; i < dynElement._watch_expressions.length; ++i)
-				lc.dynamicui.unwatch(dynElement._watch_expressions[i], dynElement.element, dynElement._watch_callback);
+				lc.dynamicui.unwatch(dynElement._watch_expressions[i], dynElement._watch_callback);
 		},
 		
+		_elementsToUpdate: [],
+		
 		updateElement: function(dynElement) {
-			dynElement.evaluate();
+			lc.dynamicui._elementsToUpdate.push(dynElement);
+		},
+		
+		_updateElements: function() {
+			var roots = [];
+			for (var i = 0; i < lc.dynamicui._elementsToUpdate.length; ++i) {
+				var e = lc.dynamicui._elementsToUpdate[i];
+				var found = false;
+				for (var j = 0; j < roots.length; ++j) {
+					if (roots[j] === e) {
+						found = true;
+						break;
+					}
+					if (lc.xml.isAncestorOf(roots[j].element, e.element)) {
+						found = true;
+						break;
+					}
+				}
+				if (found) continue;
+				for (var j = 0; j < roots.length; ++j) {
+					if (lc.xml.isAncestorOf(e.element, roots[j].element)) {
+						roots.splice(j, 1);
+						j--;
+					}
+				}
+				roots.push(e);
+			}
+			for (var i = 0; i < roots.length; ++i)
+				lc.dynamicui._updateElementsHierarchy(roots[i].element);
+		},
+		
+		_updateElementsHierarchy: function(element) {
+			if (element._lc_dynamicui) {
+				element._lc_dynamicui.evaluate();
+			}
+			for (var i = 0; i < element.childNodes.length; ++i)
+				lc.dynamicui._updateElementsHierarchy(element.childNodes[i]);
 		},
 		
 		_watchers: [],
 		
-		watch: function(expression, element, callback) {
+		watch: function(expression, callback) {
+			if (!lc.core.instanceOf(expression, lc.dynamicui.Expression))
+				throw new Error("lc.dynamicui.watch must be called with a lc.dynamicui.Expression instance, given is: " + lc.core.typeOf(expression));
 			var watcher = {
 				expression: expression,
-				element: element,
 				callback: callback,
 				value: undefined,
 				check: function() {
-					var val = lc.dynamicui.evaluate(this.expression, this.element);
+					var val = this.expression.evaluate();
 					if (lc.dynamicui.equals(val, this.value)) return false;
 					var prev = this.value;
 					this.value = val;
@@ -41,10 +80,10 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			watcher.check();
 		},
 		
-		unwatch: function(expression, element, callback) {
+		unwatch: function(expression, callback) {
 			for (var i = 0; i < lc.dynamicui._watchers.length; ++i) {
 				var w = lc.dynamicui._watchers[i];
-				if (w.expression === expression && w.element === element && w.callback === w.callback) {
+				if (w.expression === expression && w.callback === w.callback) {
 					lc.dynamicui._watchers.splice(i, 1);
 					break;
 				}
@@ -53,53 +92,22 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 		
 		_needCycle: false,
 		_nextCycle: null,
+		_cycleId: 0,
 		
 		needCycle: function() {
 			if (lc.dynamicui._needCycle) return;
+			if (lc.log.trace("lc.dynamicui")) {
+				try { throw new Error(); } catch (e) {
+					lc.log.trace("lc.dynamicui", "needCycle here:\r\n" + e.stack);
+				}
+			}
 			lc.dynamicui._needCycle = true;
 			if (!lc.dynamicui._nextCycle)
 				lc.dynamicui._nextCycle = setTimeout(function() { lc.dynamicui._cycle(); }, 0);
 		},
 		
-		evaluate: function(expression, element, thisObj, additions) {
-			var ctx = lc.Context.aggregate(element);
-			if (additions)
-				for (var n in additions)
-					ctx[n] = additions[n];
-			var i;
-			while ((i = expression.indexOf("$(")) >= 0) {
-				var j = expression.indexOf(')', i + 2);
-				if (j < 0) break;
-				expression = expression.substring(0, i) + "lc.Context.get(document.getElementById(\"" + expression.substring(i + 2, j) + "\"), true)" + expression.substring(j + 1);
-			}
-			var properties = "";
-			var first = true;
-			for (var name in ctx) {
-				if (first) first = false; else properties += ", ";
-				properties += name;
-			}
-			var code = "(function(" + properties + ")";
-			if (expression.startsWith("{"))
-				code += expression;
-			else
-				code += "{return (" + expression + ");}";
-			code += ").call(this,";
-			first = true;
-			for (var name in ctx) {
-				if (first) first = false; else code += ", ";
-				code += "context." + name;
-			}
-			code += ")";
-			try {
-				var value = new Function("context", "return (" + code + ")").call(thisObj, ctx);
-				if (lc.log.trace("lc.dynamicui"))
-					lc.log.trace("lc.dynamicui", "Expression " + expression + " = " + value + "\r\nthis = " + thisObj + ", properties: " + properties);
-				return value;
-			} catch (error) {
-				if (lc.log.trace("lc.dynamicui"))
-					lc.log.trace("lc.dynamicui", "Expression " + expression + ": " + error + "\r\nthis = " + thisObj + ", properties: " + properties);
-				return undefined;
-			}
+		getCycleId: function() {
+			return lc.dynamicui._cycleId;
 		},
 		
 		equals: function(v1, v2) {
@@ -137,16 +145,21 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			var count = 0;
 			if (lc.log.debug("lc.dynamicui"))
 				lc.log.debug("lc.dynamicui", "Start cycle");
+			var start = new Date().getTime();
 			do {
+				lc.dynamicui._cycleId++;
+				lc.dynamicui._needCycle = false;
+				if (count > 0 && lc.log.debug("lc.dynamicui"))
+					lc.log.debug("lc.dynamicui", "New cycle needed (" + count + ")");
 				for (var i = 0; i < lc.dynamicui._watchers.length; ++i) {
 					var w = lc.dynamicui._watchers[i];
 					w.check();
 				}
-				lc.dynamicui._needCycle = false;
+				lc.dynamicui._updateElements();
 			} while ((++count) < 100 && lc.dynamicui._needCycle);
 			lc.dynamicui._nextCycle = null;
 			if (lc.log.debug("lc.dynamicui"))
-				lc.log.debug("lc.dynamicui", "End cycle: " + count);
+				lc.log.debug("lc.dynamicui", "End cycle: " + count + " done in " + (new Date().getTime() - start) + "ms.");
 		}
 		
 	});
@@ -170,8 +183,23 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				elementStatus.stop();
 				return;
 			}
-			if (element.nodeName == "LC-DYN-FOREACH") {
+			if (element.nodeName == "LC-DYN-IF" || element.getAttribute("lc-dyn-if")) {
+				new lc.dynamicui.elements.Conditional(element);
+				elementStatus.stop();
+				return;
+			}
+			if (element.nodeName == "LC-DYN-FOREACH" || element.getAttribute("lc-dyn-foreach")) {
 				new lc.dynamicui.elements.ForEach(element);
+				elementStatus.stop();
+				return;
+			}
+			if (element.nodeName == "LC-DYN-TEMPLATE" || element.getAttribute("lc-dyn-template")) {
+				new lc.dynamicui.Template(element);
+				elementStatus.stop();
+				return;
+			}
+			if (element.nodeName == "LC-DYN-APPLY-TEMPLATE") {
+				new lc.dynamicui.elements.ApplyTemplate(element);
 				elementStatus.stop();
 				return;
 			}

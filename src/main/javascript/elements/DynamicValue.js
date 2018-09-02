@@ -2,9 +2,11 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 	
 	lc.core.extendClass("lc.dynamicui.elements.DynamicValue", lc.dynamicui.elements.DynamicElement,
 		function(element) {
-			element.style.display = "inline-block";
-			this.expression = element.textContent;
-			lc.html.empty(element);
+			var span = document.createElement("SPAN");
+			this.expression = new lc.dynamicui.Expression(element.textContent, span);
+			element.parentNode.insertBefore(span, element);
+			lc.html.remove(element);
+			element = span;
 			this.comment = document.createComment(this.expression);
 			element.appendChild(this.comment);
 			this.value = undefined;
@@ -14,7 +16,7 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 		}, {
 			
 			evaluate: function() {
-				var value = lc.dynamicui.evaluate(this.expression, this.element);
+				var value = this.expression.evaluate();
 				if (lc.dynamicui.equals(value, this.value)) return;
 				this.value = value;
 				lc.html.removeChildrenAfter(this.comment);
