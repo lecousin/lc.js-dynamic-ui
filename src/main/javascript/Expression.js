@@ -7,7 +7,7 @@ lc.core.createClass("lc.dynamicui.Expression",
 		this.currentValue = undefined;
 		this.currentCycle = -1;
 	},{
-		evaluate: function() {
+		evaluate: function(throws) {
 			if (this.currentCycle === lc.dynamicui.getCycleId())
 				return this.currentValue;
 			
@@ -43,6 +43,7 @@ lc.core.createClass("lc.dynamicui.Expression",
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\nthis = " + this.thisObj + ", properties: " + properties);
 			} catch (error) {
+				if (throws) throw error;
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + ": " + error + "\r\nthis = " + this.thisObj + ", properties: " + properties + "\r\n" + error.stack);
 				this.currentValue = undefined;

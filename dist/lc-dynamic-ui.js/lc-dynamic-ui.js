@@ -2,23 +2,47 @@ lc.core.createClass("lc.dynamicui.DynamicEvent",
 	function(object, eventName, eventCode, element) {
 		var eventFunction = function(event) {
 			var expression = new lc.dynamicui.Expression("{" + eventCode + "}", element, object, { event: event });
-			expression.evaluate();
+			try {
+				expression.evaluate(true);
+			} catch (error) {
+				lc.log.error("lc.dynamicui.DynamicEvent", "Listener error on " + eventName + ": " + error, error);
+			}
 			lc.dynamicui.needCycle();
 		};
-	
-		if (typeof object["addEventListener"] === 'function')
-			lc.events.listen(object, eventName, eventFunction);
-		else if (lc.core.instanceOf(object, "lc.events.Producer"))
-			object.on(eventName, eventFunction);
-		else
-			throw "Unable to listen to an event on object " + lc.core.typeOf(object);
 
-		lc.events.listen(element, 'destroy', function() {
-			if (typeof object["addEventListener"] === 'function')
-				lc.events.unlisten(object, eventName, eventFunction);
-			else if (lc.core.instanceOf(object, "lc.events.Producer"))
+		if (lc.core.instanceOf(object, "lc.events.Producer")) {
+			object.on(eventName, eventFunction);
+			lc.events.listen(element, 'destroy', function() {
 				object.unlisten(eventName, eventFunction);
-		});
+			});
+			return;
+		}
+		
+		if (typeof object["nodeType"] !== 'undefined' && object.nodeType == 1) {
+			var ctx = lc.Context.get(object, true);
+			if (ctx) {
+				for (var name in ctx) {
+					var val = ctx[name];
+					if (lc.core.instanceOf(val, "lc.events.Producer") && val.hasEvent(eventName)) {
+						val.on(eventName, eventFunction);
+						lc.events.listen(element, 'destroy', function() {
+							val.unlisten(eventName, eventFunction);
+						});
+						return;
+					}
+				}
+			}
+		}
+		
+		if (typeof object["addEventListener"] === 'function') {
+			lc.events.listen(object, eventName, eventFunction);
+			lc.events.listen(element, 'destroy', function() {
+				lc.events.unlisten(object, eventName, eventFunction);
+			});
+			return;
+		}
+
+		throw new Error("Unable to listen to an event on object " + lc.core.typeOf(object));
 	}, {
 	}
 );
@@ -185,7 +209,7 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 			element.parentNode.insertBefore(span, element);
 			lc.html.remove(element);
 			element = span;
-			this.comment = document.createComment(this.expression);
+			this.comment = document.createComment(this.expression.expression);
 			element.appendChild(this.comment);
 			this.value = undefined;
 			this.asHTML = element.hasAttribute("as-html");
@@ -321,7 +345,7 @@ lc.core.createClass("lc.dynamicui.Expression",
 		this.currentValue = undefined;
 		this.currentCycle = -1;
 	},{
-		evaluate: function() {
+		evaluate: function(throws) {
 			if (this.currentCycle === lc.dynamicui.getCycleId())
 				return this.currentValue;
 			
@@ -357,6 +381,7 @@ lc.core.createClass("lc.dynamicui.Expression",
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\nthis = " + this.thisObj + ", properties: " + properties);
 			} catch (error) {
+				if (throws) throw error;
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + ": " + error + "\r\nthis = " + this.thisObj + ", properties: " + properties + "\r\n" + error.stack);
 				this.currentValue = undefined;
@@ -546,8 +571,6 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-property-"))
 					new lc.dynamicui.DynamicProperty(element, a.name.substring(16), a.value, element);
-				else if (a.name.startsWith("lc-dyn-event-"))
-					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
 			}
 			
 			if (element.nodeName == "LC-DYN") {
@@ -576,6 +599,17 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				return;
 			}
 		}
+	}, 5000);
+	
+	lc.html.processor.addPostProcessor(function(element, elementStatus, globalStatus) {
+		if (element.nodeType == 1) {
+			for (var i = 0; i < element.attributes.length; ++i) {
+				var a = element.attributes.item(i);
+				if (a.name.startsWith("lc-dyn-event-"))
+					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
+			}
+		}
+		
 	}, 5000);
 	
 });

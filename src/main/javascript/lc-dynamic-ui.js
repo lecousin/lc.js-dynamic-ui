@@ -174,8 +174,6 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-property-"))
 					new lc.dynamicui.DynamicProperty(element, a.name.substring(16), a.value, element);
-				else if (a.name.startsWith("lc-dyn-event-"))
-					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
 			}
 			
 			if (element.nodeName == "LC-DYN") {
@@ -204,6 +202,17 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				return;
 			}
 		}
+	}, 5000);
+	
+	lc.html.processor.addPostProcessor(function(element, elementStatus, globalStatus) {
+		if (element.nodeType == 1) {
+			for (var i = 0; i < element.attributes.length; ++i) {
+				var a = element.attributes.item(i);
+				if (a.name.startsWith("lc-dyn-event-"))
+					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
+			}
+		}
+		
 	}, 5000);
 	
 });

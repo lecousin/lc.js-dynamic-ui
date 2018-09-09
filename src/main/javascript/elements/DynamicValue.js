@@ -7,7 +7,7 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 			element.parentNode.insertBefore(span, element);
 			lc.html.remove(element);
 			element = span;
-			this.comment = document.createComment(this.expression);
+			this.comment = document.createComment(this.expression.expression);
 			element.appendChild(this.comment);
 			this.value = undefined;
 			this.asHTML = element.hasAttribute("as-html");
