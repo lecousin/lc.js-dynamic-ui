@@ -38,17 +38,17 @@ lc.core.createClass("lc.dynamicui.Expression",
 				code += "context." + name;
 			}
 			code += ")";
+			this.currentCycle = lc.dynamicui.getCycleId();
 			try {
 				this.currentValue = new Function("context", "return (" + code + ")").call(this.thisObj, ctx);
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\nthis = " + this.thisObj + ", properties: " + properties);
 			} catch (error) {
-				if (throws) throw error;
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + ": " + error + "\r\nthis = " + this.thisObj + ", properties: " + properties + "\r\n" + error.stack);
+				if (throws) throw error;
 				this.currentValue = undefined;
 			}
-			this.currentCycle = lc.dynamicui.getCycleId();
 			return this.currentValue;
 		},
 		

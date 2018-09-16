@@ -10,7 +10,7 @@ module.exports = function(grunt) {
 			},
 			dist: {
 				src: ['src/main/javascript/**/*.js'],
-				dest: 'dist/lc-dynamic-ui.js/lc-dynamic-ui.js',
+				dest: 'dist/lc-dynamic-ui.js',
 			}
 		},
 		uglify: {
@@ -19,7 +19,7 @@ module.exports = function(grunt) {
 			},
 			all: {
 				files: {
-					'dist/lc-dynamic-ui.js/lc-dynamic-ui.min.js': ['dist/lc-dynamic-ui.js/lc-dynamic-ui.js']
+					'dist/lc-dynamic-ui.min.js': ['dist/lc-dynamic-ui.js']
 				}
 			}
 		},

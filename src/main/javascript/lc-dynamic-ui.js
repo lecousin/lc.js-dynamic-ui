@@ -14,6 +14,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 		unregisterElement: function(dynElement) {
 			for (var i = 0; i < dynElement._watch_expressions.length; ++i)
 				lc.dynamicui.unwatch(dynElement._watch_expressions[i], dynElement._watch_callback);
+			lc.dynamicui._elementsToUpdate.remove(dynElement);
 		},
 		
 		_elementsToUpdate: [],
@@ -70,6 +71,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				check: function() {
 					var val = this.expression.evaluate();
 					if (lc.dynamicui.equals(val, this.value)) return false;
+					// TODO trace or debug
 					var prev = this.value;
 					this.value = val;
 					lc.async.Callback.callListeners(this.callback, [val, prev]);
@@ -112,6 +114,9 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 		
 		equals: function(v1, v2) {
 			if (v1 === v2) return true;
+			if (v1 === null || v2 === null) return false;
+			if (v1 === undefined || v2 === undefined) return false;
+			// TODO avoid cyclic
 			// arrays
 			if (Array.isArray(v1)) {
 				if (!Array.isArray(v2)) return false;
