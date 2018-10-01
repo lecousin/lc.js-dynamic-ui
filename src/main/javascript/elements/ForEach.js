@@ -32,7 +32,11 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 			
 			evaluate: function() {
 				var arr = this.arrayExpression.evaluate();
-				if (lc.dynamicui.equals(arr, this.arrayValue)) return;
+				if (lc.dynamicui.equals(arr, this.arrayValue)) {
+					//if (lc.log.trace("lc.dynamicui.ForEach")) lc.log.trace("lc.dynamicui.ForEach", "array still the same: " + this.arrayExpression.expression);
+					return;
+				}
+				if (lc.log.trace("lc.dynamicui.ForEach")) lc.log.trace("lc.dynamicui.ForEach", "array changed: " + this.arrayExpression.expression);
 				var newElements = [];
 				if (arr && arr.length > 0) {
 					for (var i = 0; i < arr.length; ++i) {
@@ -76,18 +80,20 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 					};
 					while (e.childNodes.length > 0) {
 						var elem = e.removeChild(e.childNodes[0]);
-						var ctx = lc.Context.get(elem);
-						ctx.addProperty(this.varName, value);
-						ctx.addProperty(this.varName + "Index", index);
+						this._setContext(elem, value, index);
 						result.elements.push(elem);
 					}
 					return result;
 				}
 				var e = this.content.cloneNode(true);
-				var ctx = lc.Context.get(e);
+				this._setContext(e, value, index);
+				return { elements: [e], value: value };
+			},
+			
+			_setContext: function(element, value, index) {
+				var ctx = lc.Context.get(element);
 				ctx.addProperty(this.varName, value);
 				ctx.addProperty(this.varName + "Index", index);
-				return { elements: [e], value: value };
 			}
 			
 		}

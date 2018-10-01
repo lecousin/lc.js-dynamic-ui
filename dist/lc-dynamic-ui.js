@@ -181,6 +181,61 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 	);
 	
 });
+lc.core.createClass("lc.dynamicui.DynamicData",
+	function(element, expression) {
+		this.expression = expression;
+		this.element = element;
+		lc.events.listen(element, "processed", new lc.async.Callback(this, this._linkData));
+	}, {
+		_linkData: function() {
+			if (this.element.nodeName == "INPUT") {
+				if (this.element.type == "checkbox" || this.element.type == "radio") {
+					this._linkProperty(this.element, "checked");
+					lc.events.listen(this.element, "change", lc.dynamicui.needCycle);
+				} else {
+					this._linkProperty(this.element, "value");
+					lc.events.listen(this.element, "keyup", lc.dynamicui.needCycle);
+					lc.events.listen(this.element, "change", lc.dynamicui.needCycle);
+				}
+				return;
+			}
+			var ctx = lc.Context.get(this.element, true);
+			if (ctx) {
+				for (var n in ctx) {
+					if (lc.core.instanceOf(ctx[n], lc.events.Producer) && typeof ctx[n]["hasOwnProperty"] === 'function') {
+						if (ctx[n].hasEvent("change") && ctx[n].hasOwnProperty("value")) {
+							this._linkProperty(ctx[n], "value");
+							ctx[n].on("change", lc.dynamicui.needCycle);
+							return;
+						}
+					}
+				}
+			}
+			lc.log.warn("lc.dynamicui.DynamicData", "Unable to find how to link data " + this.expression);
+		},
+		
+		_linkProperty: function(object, propertyName) {
+			var propExpr = new lc.dynamicui.Expression("this." + propertyName, this.element, object);
+			var dataExpr = new lc.dynamicui.Expression(this.expression, this.element, object);
+			var dataFromProp = new lc.dynamicui.Expression(this.expression + " = this." + propertyName, this.element, object);
+			// initial value
+			object[propertyName] = dataExpr.evaluate(false);
+			// watch
+			var propWatcher, dataWatcher;
+			lc.dynamicui.watch(dataExpr, dataWatcher = new lc.async.Callback(this, function(value, previous) {
+				object[propertyName] = value;
+			}));
+			lc.dynamicui.watch(propExpr, propWatcher = new lc.async.Callback(this, function(value, previous) {
+				dataFromProp.evaluate(false);
+			}));
+			// unwatch
+			lc.events.listen(this.element, "destroy", function() {
+				lc.dynamicui.unwatch(propExpr, propWatcher);
+				lc.dynamicui.unwatch(dataExpr, dataWatcher);
+			});
+		}
+	}
+);
 lc.core.createClass("lc.dynamicui.elements.DynamicElement",
 	function(element) {
 		this.element = element;
@@ -274,7 +329,11 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 			
 			evaluate: function() {
 				var arr = this.arrayExpression.evaluate();
-				if (lc.dynamicui.equals(arr, this.arrayValue)) return;
+				if (lc.dynamicui.equals(arr, this.arrayValue)) {
+					//if (lc.log.trace("lc.dynamicui.ForEach")) lc.log.trace("lc.dynamicui.ForEach", "array still the same: " + this.arrayExpression.expression);
+					return;
+				}
+				if (lc.log.trace("lc.dynamicui.ForEach")) lc.log.trace("lc.dynamicui.ForEach", "array changed: " + this.arrayExpression.expression);
 				var newElements = [];
 				if (arr && arr.length > 0) {
 					for (var i = 0; i < arr.length; ++i) {
@@ -318,18 +377,20 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 					};
 					while (e.childNodes.length > 0) {
 						var elem = e.removeChild(e.childNodes[0]);
-						var ctx = lc.Context.get(elem);
-						ctx.addProperty(this.varName, value);
-						ctx.addProperty(this.varName + "Index", index);
+						this._setContext(elem, value, index);
 						result.elements.push(elem);
 					}
 					return result;
 				}
 				var e = this.content.cloneNode(true);
-				var ctx = lc.Context.get(e);
+				this._setContext(e, value, index);
+				return { elements: [e], value: value };
+			},
+			
+			_setContext: function(element, value, index) {
+				var ctx = lc.Context.get(element);
 				ctx.addProperty(this.varName, value);
 				ctx.addProperty(this.varName + "Index", index);
-				return { elements: [e], value: value };
 			}
 			
 		}
@@ -379,8 +440,20 @@ lc.core.createClass("lc.dynamicui.Expression",
 			this.currentCycle = lc.dynamicui.getCycleId();
 			try {
 				this.currentValue = new Function("context", "return (" + code + ")").call(this.thisObj, ctx);
+				if (this.currentValue && lc.core.instanceOf(this.currentValue, lc.async.Future)) {
+					var future = this.currentValue;
+					if (future.isDone())
+						this.currentValue = future.getResult();
+					else {
+						this.currentValue = undefined;
+						future.onsuccess(new lc.async.Callback(this, function(result) {
+							this.currentValue = result;
+							lc.dynamicui.needCycle();
+						}));
+					}
+				}
 				if (lc.log.trace("lc.dynamicui.Expression"))
-					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\nthis = " + this.thisObj + ", properties: " + properties);
+					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\ntype = " + lc.core.typeOf(this.currentValue) + ", this = " + this.thisObj + ", properties: " + properties);
 			} catch (error) {
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + ": " + error + "\r\nthis = " + this.thisObj + ", properties: " + properties + "\r\n" + error.stack);
@@ -576,6 +649,23 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-property-"))
 					new lc.dynamicui.DynamicProperty(element, a.name.substring(16), a.value, element);
+				else if (a.name == "lc-dyn-controller") {
+					var clazz = a.value;
+					var name = "controller";
+					var j = clazz.indexOf(" as ");
+					if (j > 0) {
+						name = clazz.substring(j + 4).trim();
+						clazz = clazz.substring(0, j).trim();
+					}
+					var ctor = lc.core.fromName(clazz);
+					if (!ctor) {
+						lc.log.error("lc.dynamicui", "Controller class does not exist: " + clazz);
+					} else {
+						var controller = new ctor(element, elementStatus);
+						lc.Context.get(element).setProperty(name, controller);
+					}
+				} else if (a.name == "lc-dyn-data")
+					new lc.dynamicui.DynamicData(element, a.value);
 			}
 			
 			if (element.nodeName == "LC-DYN") {
@@ -604,7 +694,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				return;
 			}
 		}
-	}, 5000);
+	}, 20000);
 	
 	lc.html.processor.addPostProcessor(function(element, elementStatus, globalStatus) {
 		if (element.nodeType == 1) {
@@ -612,12 +702,42 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-event-"))
 					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
+				else if (a.name == "lc-dyn-event") {
+					var s = a.nodeValue;
+					var j = s.indexOf('=');
+					var expr = s.substring(j + 1);
+					s = s.substring(0, j);
+					j = s.indexOf(" on ");
+					var eventName = s.substring(0, j).trim();
+					var objectName = s.substring(j + 4).trim();
+					var obj = lc.Context.searchValue(element, objectName);
+					if (!obj) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " not found in the context of the element");
+						continue;
+					}
+					var obj = ctx[objectName];
+					if (!lc.core.instanceOf(obj, "lc.events.Producer")) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " is not a lc.events.Producer: " + lc.core.typeOf(obj));
+						continue;
+					}
+					if (!obj.hasEvent(eventName)) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " of type " + lc.Core.typeOf(obj) + " has no event " + eventName);
+						continue;
+					}
+					new lc.dynamicui.DynamicEvent(obj, eventName, expr, element);
+				}
 			}
 		}
 		
 	}, 5000);
 	
+	// when an asynchronous operation is done, trigger a new cycle
+	lc.app.addAsynchronousOperationListener(function(future) {
+		future.ondone(lc.dynamicui.needCycle);
+	});
+	
 });
+
 lc.core.createClass("lc.dynamicui.Template",
 	function(element) {
 		var ctx = lc.Context.get(element.parentNode);

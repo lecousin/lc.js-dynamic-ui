@@ -179,6 +179,23 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-property-"))
 					new lc.dynamicui.DynamicProperty(element, a.name.substring(16), a.value, element);
+				else if (a.name == "lc-dyn-controller") {
+					var clazz = a.value;
+					var name = "controller";
+					var j = clazz.indexOf(" as ");
+					if (j > 0) {
+						name = clazz.substring(j + 4).trim();
+						clazz = clazz.substring(0, j).trim();
+					}
+					var ctor = lc.core.fromName(clazz);
+					if (!ctor) {
+						lc.log.error("lc.dynamicui", "Controller class does not exist: " + clazz);
+					} else {
+						var controller = new ctor(element, elementStatus);
+						lc.Context.get(element).setProperty(name, controller);
+					}
+				} else if (a.name == "lc-dyn-data")
+					new lc.dynamicui.DynamicData(element, a.value);
 			}
 			
 			if (element.nodeName == "LC-DYN") {
@@ -207,7 +224,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				return;
 			}
 		}
-	}, 5000);
+	}, 20000);
 	
 	lc.html.processor.addPostProcessor(function(element, elementStatus, globalStatus) {
 		if (element.nodeType == 1) {
@@ -215,9 +232,38 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				var a = element.attributes.item(i);
 				if (a.name.startsWith("lc-dyn-event-"))
 					new lc.dynamicui.DynamicEvent(element, a.name.substring(13), a.value, element);
+				else if (a.name == "lc-dyn-event") {
+					var s = a.nodeValue;
+					var j = s.indexOf('=');
+					var expr = s.substring(j + 1);
+					s = s.substring(0, j);
+					j = s.indexOf(" on ");
+					var eventName = s.substring(0, j).trim();
+					var objectName = s.substring(j + 4).trim();
+					var obj = lc.Context.searchValue(element, objectName);
+					if (!obj) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " not found in the context of the element");
+						continue;
+					}
+					var obj = ctx[objectName];
+					if (!lc.core.instanceOf(obj, "lc.events.Producer")) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " is not a lc.events.Producer: " + lc.core.typeOf(obj));
+						continue;
+					}
+					if (!obj.hasEvent(eventName)) {
+						lc.log.error("lc.dynamicui", "lc-dyn-event: Property " + objectName + " of type " + lc.Core.typeOf(obj) + " has no event " + eventName);
+						continue;
+					}
+					new lc.dynamicui.DynamicEvent(obj, eventName, expr, element);
+				}
 			}
 		}
 		
 	}, 5000);
+	
+	// when an asynchronous operation is done, trigger a new cycle
+	lc.app.addAsynchronousOperationListener(function(future) {
+		future.ondone(lc.dynamicui.needCycle);
+	});
 	
 });

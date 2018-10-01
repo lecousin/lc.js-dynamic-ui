@@ -41,8 +41,20 @@ lc.core.createClass("lc.dynamicui.Expression",
 			this.currentCycle = lc.dynamicui.getCycleId();
 			try {
 				this.currentValue = new Function("context", "return (" + code + ")").call(this.thisObj, ctx);
+				if (this.currentValue && lc.core.instanceOf(this.currentValue, lc.async.Future)) {
+					var future = this.currentValue;
+					if (future.isDone())
+						this.currentValue = future.getResult();
+					else {
+						this.currentValue = undefined;
+						future.onsuccess(new lc.async.Callback(this, function(result) {
+							this.currentValue = result;
+							lc.dynamicui.needCycle();
+						}));
+					}
+				}
 				if (lc.log.trace("lc.dynamicui.Expression"))
-					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\nthis = " + this.thisObj + ", properties: " + properties);
+					lc.log.trace("lc.dynamicui.Expression", this.expression + " = " + this.currentValue + "\r\ntype = " + lc.core.typeOf(this.currentValue) + ", this = " + this.thisObj + ", properties: " + properties);
 			} catch (error) {
 				if (lc.log.trace("lc.dynamicui.Expression"))
 					lc.log.trace("lc.dynamicui.Expression", this.expression + ": " + error + "\r\nthis = " + this.thisObj + ", properties: " + properties + "\r\n" + error.stack);
