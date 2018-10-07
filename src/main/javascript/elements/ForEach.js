@@ -58,7 +58,7 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 					for (var j = 0; j < this.arrayElements[i].elements.length; ++j)
 						lc.html.remove(this.arrayElements[i].elements[j]);
 				this.arrayElements = newElements;
-				this.arrayValue = arr;
+				this.arrayValue = lc.core.copyDeep(arr);
 				for (var i = 0; i < this.arrayElements.length; ++i) {
 					for (var j = 0; j < this.arrayElements[i].elements.length; ++j) {
 						var element = this.arrayElements[i].elements[j];

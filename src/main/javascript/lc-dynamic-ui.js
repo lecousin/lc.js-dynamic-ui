@@ -3,12 +3,14 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 	lc.core.namespace("lc.dynamicui", {
 		
 		registerElement: function(dynElement, expressions) {
+			if (!dynElement.element) throw new Error("Dynamic element must have an element attached");
 			dynElement._watch_callback = function() {
 				lc.dynamicui.updateElement(dynElement);
 			};
 			dynElement._watch_expressions = expressions;
 			for (var i = 0; i < expressions.length; ++i)
 				lc.dynamicui.watch(expressions[i], dynElement._watch_callback);
+			lc.dynamicui.needCycle();
 		},
 		
 		unregisterElement: function(dynElement) {
@@ -27,6 +29,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			var roots = [];
 			for (var i = 0; i < lc.dynamicui._elementsToUpdate.length; ++i) {
 				var e = lc.dynamicui._elementsToUpdate[i];
+				if (!e.element) continue; // already removed
 				var found = false;
 				for (var j = 0; j < roots.length; ++j) {
 					if (roots[j] === e) {
@@ -48,7 +51,8 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				roots.push(e);
 			}
 			for (var i = 0; i < roots.length; ++i)
-				lc.dynamicui._updateElementsHierarchy(roots[i].element);
+				if (roots[i].element)
+					lc.dynamicui._updateElementsHierarchy(roots[i].element);
 		},
 		
 		_updateElementsHierarchy: function(element) {
@@ -112,17 +116,20 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			return lc.dynamicui._cycleId;
 		},
 		
-		equals: function(v1, v2) {
-			if (v1 === v2) return true;
-			if (v1 === null || v2 === null) return false;
-			if (v1 === undefined || v2 === undefined) return false;
-			// TODO avoid cyclic
+		equals: function(v1, v2, done) {
+			if (v1 === null || v2 === null) return v1 === v2;
+			if (v1 === undefined || v2 === undefined) return v1 === v2;
+			if (!done) done = [];
+			if (done.contains(v1) && done.contains(v2)) return true;
+			done = done.slice();
+			done.push(v1);
+			done.push(v2);
 			// arrays
 			if (Array.isArray(v1)) {
 				if (!Array.isArray(v2)) return false;
 				if (v1.length != v2.length) return false;
 				for (var i = 0; i < v1.length; ++i)
-					if (!lc.dynamicui.equals(v1[i], v2[i]))
+					if (!lc.dynamicui.equals(v1[i], v2[i], done))
 						return false;
 				return true;
 			}
@@ -133,7 +140,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 				if (!(typeof v2 === 'object')) return false;
 				for (var n in v1) {
 					if (!v2.hasOwnProperty(n)) return false;
-					if (!lc.dynamicui.equals(v1[n], v2[n]))
+					if (!lc.dynamicui.equals(v1[n], v2[n], done))
 						return false;
 				}
 				for (var n in v2) {
@@ -143,7 +150,7 @@ lc.app.onDefined(["lc.html.processor","lc.Context"], function() {
 			}
 			if (typeof v2 === 'object') return false;
 			// else
-			return false;
+			return v1 === v2;
 		},
 		
 		_cycle: function() {

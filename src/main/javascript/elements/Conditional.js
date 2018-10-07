@@ -27,7 +27,8 @@ lc.app.onDefined("lc.dynamicui.elements.DynamicElement", function() {
 			
 			evaluate: function() {
 				var condition = this.condition.evaluate();
-				if (lc.dynamicui.equals(condition, this.conditionValue)) return;
+				if (condition !== undefined) condition = condition ? true : false;
+				if (condition === this.conditionValue) return;
 				this.conditionValue = condition;
 				if (!condition) {
 					for (var i = 0; i < this.currentElements.length; ++i)
